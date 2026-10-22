@@ -379,6 +379,118 @@ static class GradeGUI extends JPanel {
 		refresh();
 	}
 }
+// parent section
+// overview gui: read-only, shows warnings
+static class OverviewGUI extends JPanel {
+
+	private static final int ATT_LIMIT = 75;    // attendance warning below this %
+	private static final int GRADE_LIMIT = 50;  // grade warning below this % (change as you like)
+
+	private final JPanel warnPanel = new JPanel();
+	private final JPanel attPanel = new JPanel();
+	private final JPanel gradePanel = new JPanel();
+
+	public OverviewGUI(){
+		setLayout(new BorderLayout(10,10));
+		setBorder(BorderFactory.createEmptyBorder(15,15,15,15));
+
+		JLabel titlelabel = new JLabel("Overview", JLabel.CENTER);
+		titlelabel.setFont(new Font("SansSerif", Font.BOLD, 25));
+		add(titlelabel, BorderLayout.NORTH);
+
+		warnPanel.setLayout(new BoxLayout(warnPanel, BoxLayout.Y_AXIS));
+		warnPanel.setBorder(BorderFactory.createTitledBorder("Warnings"));
+
+		attPanel.setLayout(new BoxLayout(attPanel, BoxLayout.Y_AXIS));
+		attPanel.setBorder(BorderFactory.createTitledBorder("Attendance (min " + ATT_LIMIT + "%)"));
+
+		gradePanel.setLayout(new BoxLayout(gradePanel, BoxLayout.Y_AXIS));
+		gradePanel.setBorder(BorderFactory.createTitledBorder("Grades (min " + GRADE_LIMIT + "%)"));
+
+		JPanel columns = new JPanel(new GridLayout(1,2,15,0));
+		columns.add(attPanel);
+		columns.add(gradePanel);
+
+		JPanel center = new JPanel(new BorderLayout(10,10));
+		center.add(warnPanel, BorderLayout.NORTH);
+		center.add(columns, BorderLayout.CENTER);
+		add(center, BorderLayout.CENTER);
+
+		refresh(); // first draw
+	}
+
+	// reload from the DB and redraw everything
+	public void refresh(){
+		warnPanel.removeAll();
+		attPanel.removeAll();
+		gradePanel.removeAll();
+
+		fill(attPanel, DBManager.loadAll(), ATT_LIMIT, "Attendance");
+		fill(gradePanel, DBManager.loadAllGrades(), GRADE_LIMIT, "Grade");
+
+		if(warnPanel.getComponentCount() == 0){
+			JLabel ok = new JLabel("All subjects are on track.");
+			ok.setForeground(new Color(46, 160, 67));
+			warnPanel.add(ok);
+		}
+
+		warnPanel.revalidate(); warnPanel.repaint();
+		attPanel.revalidate();  attPanel.repaint();
+		gradePanel.revalidate(); gradePanel.repaint();
+	}
+
+	// builds one column and adds warnings for low subjects
+	private void fill(JPanel target, java.util.List<Object[]> rows, int limit, String what){
+		target.add(Box.createVerticalGlue());
+		for(Object[] r : rows){
+			String name = (String) r[0];
+			int a = (Integer) r[1];
+			int t = (Integer) r[2];
+			int pct = t == 0 ? 0 : (int) Math.round(100.0 * a / t);
+			boolean low = pct < limit;
+			Color color = low ? new Color(207, 34, 46) : new Color(46, 160, 67);
+
+			// row: name | bar | ratio
+			JPanel row = new JPanel(new BorderLayout(10,10));
+			row.setPreferredSize(new Dimension(400,25));
+			row.setMaximumSize(new Dimension(400,25));
+
+			JLabel nameLabel = new JLabel(name);
+			nameLabel.setPreferredSize(new Dimension(80,25));
+			nameLabel.setFont(new Font("Arial", Font.BOLD, 14));
+
+			JProgressBar bar = new JProgressBar(0,100);
+			bar.setValue(pct);
+			bar.setStringPainted(true);
+			bar.setString(pct + "%");
+			bar.setForeground(color);
+
+			JLabel ratio = new JLabel(a + "/" + t);
+			ratio.setPreferredSize(new Dimension(60,25));
+
+			row.add(nameLabel, BorderLayout.WEST);
+			row.add(bar, BorderLayout.CENTER);
+			row.add(ratio, BorderLayout.EAST);
+			target.add(row);
+			target.add(Box.createRigidArea(new Dimension(0,8)));
+
+			if(low){
+				String msg = "WARNING: " + name + " " + what.toLowerCase() + " is " + pct + "% (below " + limit + "%)";
+				if(what.equals("Attendance")){
+					// classes to attend in a row to reach the limit: (a+n)/(t+n) >= limit/100
+					int n = (int) Math.ceil((limit / 100.0 * t - a) / (1 - limit / 100.0));
+					msg += ". Attend the next " + n + " classes to recover.";
+				}
+				JLabel warn = new JLabel(msg);
+				warn.setForeground(color);
+				warnPanel.add(warn);
+			}
+		}
+		target.add(Box.createVerticalGlue());
+	}
+}
+
+
 
 
 
@@ -402,8 +514,18 @@ static class GradeGUI extends JPanel {
 			JButton gradebtn = new JButton("Grade");
 			attenbtn.addActionListener(e -> cardlay.show(cardpan, "ATTENDANCE"));
 			gradebtn.addActionListener(e -> cardlay.show(cardpan, "GRADE"));
+			OverviewGUI parent = new OverviewGUI();
+			cardpan.add(parent,"parent");
+
+			JButton parbtn = new JButton("parent");
+			parbtn.addActionListener(e->{
+				parent.refresh();
+				cardlay.show(cardpan,"parent");});
+
+
 			btnpan.add(attenbtn);
 			btnpan.add(gradebtn);
+			btnpan.add(parbtn);
 
 			add(btnpan, BorderLayout.NORTH);
 			add(cardpan, BorderLayout.CENTER);
